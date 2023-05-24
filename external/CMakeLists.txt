@@ -26,7 +26,7 @@ set(EXTERN_OUTPUT_NAME "rnbo_external_wrapper~" CACHE STRING "name of external")
 set(rnbo_external_wrapper_EXTERN_OUTPUT_NAME "${EXTERN_OUTPUT_NAME}" CACHE STRING "name of external" FORCE)
 
 conan_cmake_configure(
-	REQUIRES min-api/xnor_build-updates_f4afa01946b23b9f78fb2792905246b0@xnor/testing
+	REQUIRES min-api/xnor_build-updates_86e48da4851541443738ad5cb26ca538@xnor/testing
 	GENERATORS cmake_paths
 )
 conan_cmake_autodetect(settings)
