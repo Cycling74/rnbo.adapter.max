@@ -229,6 +229,7 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 	private:
 		std::vector<std::pair<t_rnbo_bufferref *, t_rnbo_data_loader *>> mHandlers;
 		std::vector<std::unique_ptr<attr_buffer>> mAttributes;
+		std::vector<t_object *> mBuffers;
 
 		//iterator helper
 		void each(DataRefIndex numRefs, ConstRefList refList, std::function<void(ExternalDataIndex, const ExternalDataRef* const, t_rnbo_bufferref *, t_rnbo_data_loader *)> f) {
@@ -240,6 +241,10 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 	public:
 		MaxExternalDataHandler(c74::min::object_base * owner, RNBO::CoreObject& rnbo) {
 			static t_symbol *rnbo_data_loader_class = c74::max::gensym("rnbo_data_loader");
+			static t_symbol *rnbo_buffer_refclass = c74::max::gensym("rnbo_bufferref");
+			static t_symbol *bufferclass = c74::max::gensym("buffer~");
+			static t_symbol *url_sym = c74::max::gensym("url");
+			static t_symbol *replace_sym = c74::max::gensym("replace");
 
 			//register the class, will not double register.
 			//min creates an object before it sets up the class so we regsiter on demand
@@ -251,10 +256,36 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 				ExternalDataInfo info = rnbo.getExternalDataInfo(i);
 				ExternalDataId memoryId = rnbo.getExternalDataId(i);
 
+				bool hasfile = info.file && strlen(info.file);
+
+
 				if (info.type == RNBO::DataType::Float32AudioBuffer) {
 					auto id = c74::min::symbol(c74::max::gensym(memoryId));
 
-					auto b = rnbo_bufferref_new(c74::min::k_sym__empty);
+					auto b = reinterpret_cast<t_rnbo_bufferref *>(c74::max::object_new(c74::max::CLASS_NOBOX, rnbo_buffer_refclass, id));
+
+					//create a max buffer
+					c74::max::t_atom argv;
+					c74::max::atom_setsym(&argv, id);
+					auto buf = reinterpret_cast<t_object *>(c74::max::object_new(c74::max::CLASS_BOX, bufferclass, bufferclass, 1, &argv));
+					mBuffers.push_back(buf);
+
+					//load data
+					if (hasfile) {
+						auto filesym = c74::max::gensym(info.file);
+						c74::max::t_buffer_obj *b_obj = buffer_ref_getobject(b->r_buffer_ref);
+
+						if (b_obj) {
+							if (rnbo_path_is_url(info.file)) {
+								c74::max::object_attr_setsym(b_obj, url_sym, filesym);
+							} else {
+								c74::max::t_atom rv;
+								c74::max::atom_setsym(&argv, filesym);
+								c74::max::object_method_typed(b_obj, replace_sym, 1, &argv, &rv);
+							}
+						}
+					}
+
 					mHandlers.emplace_back(std::make_pair(b, nullptr));
 					mAttributes.emplace_back(std::make_unique<attr_buffer>(
 							owner,
@@ -273,7 +304,7 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 								}
 							}
 					));
-				} else if (info.type == RNBO::DataType::Float64AudioBuffer && info.file && strlen(info.file)) {
+				} else if (info.type == RNBO::DataType::Float64AudioBuffer && hasfile) {
 					//create loader and load
 					t_rnbo_data_loader * loader = (t_rnbo_data_loader *) c74::max::object_new(c74::max::CLASS_NOBOX, rnbo_data_loader_class, info.type);
 					if (loader) {
@@ -295,6 +326,9 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 					c74::max::object_free(p.first);
 				if (p.second)
 					c74::max::object_free(p.second);
+			}
+			for (auto b: mBuffers) {
+				c74::max::object_free(b);
 			}
 		}
 
