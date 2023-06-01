@@ -2,85 +2,54 @@
 
 namespace {
 	t_class *s_rnbo_data_loader_class = nullptr;
+
+	typedef struct _audio_info {
+		long	channels;
+		long	samplerate;
+		long	frames;
+	} t_audio_info;
+
+	t_symbol *ps_close;
+	t_symbol *ps_error;
+	t_symbol *ps_open;
+
+	const t_fourcc s_types[] = {
+		FOUR_CHAR_CODE('AIFF'),
+		FOUR_CHAR_CODE('AIFC'),
+		FOUR_CHAR_CODE('ULAW'),	//next/sun typed by peak and others
+		FOUR_CHAR_CODE('WAVE'),
+		FOUR_CHAR_CODE('FLAC'),
+		FOUR_CHAR_CODE('Sd2f'),
+		FOUR_CHAR_CODE('QQQQ'),	// or whatever IRCAM snd files are saved as...
+		FOUR_CHAR_CODE('BINA'),	// or whatever IRCAM snd files are saved as...
+		FOUR_CHAR_CODE('NxTS'),	//next/sun typed by soundhack
+		FOUR_CHAR_CODE('Mp3 '),
+		FOUR_CHAR_CODE('DATA'), // our own 'raw' files
+		FOUR_CHAR_CODE('M4a '),
+		FOUR_CHAR_CODE('CAF '),
+		FOUR_CHAR_CODE('wv64')
+	};
 }
-
-static t_symbol *ps_close;
-static t_symbol *ps_error;
-static t_symbol *ps_open;
-
-static t_fourcc s_types[20];
-static short s_numtypes = 0;
 
 extern "C" {
 
-	static t_max_err loader_loadfile(
-		short vol,
-		const char *filename,
-		RNBO::DataType::Type type,
-		t_audio_info *info,
-		long *datalen,
-		char **data
-	) {
-		t_object *reader = (t_object *) object_new(CLASS_NOBOX, gensym("jsoundfile"));
+	// Simplified "loader" object that can load audio data from a file or URL
+	// without using a Max buffer.
+	struct _rnbo_data_loader {
+		t_object 				obj;
+		RNBO::DataType::Type	_type;
+		bool					_ready;
+		t_symbol				*_last_requested;
+		t_audio_info			_info;
+		char					*_data;
+		t_object				*_remote_resource;
+		t_systhread_mutex 		_mutex;
+	};
 
-		t_max_err err = (t_max_err) object_method(reader, ps_open, vol, filename, 0, 0);
-		if (err != MAX_ERR_NONE) {
-			*datalen = 0;
-			*data = nullptr;
-			return err;
-		}
-
-		// Get the info
-		info->channels = (t_atom_long) object_method(reader, gensym("getchannelcount"));
-		info->frames = (t_atom_long) object_method(reader, gensym("getlength"));
-		info->samplerate = (t_atom_long) object_method(reader, gensym("getsr"));
-		long sampleLength = info->channels * info->frames;
-
-		// Make space
-		float *fdata = (float *) malloc(info->channels * info->frames * sizeof(float));
-
-		// Read in the data
-		object_method(reader, gensym("readfloats"), fdata, 0, info->frames, info->channels);
-
-		// Close it up
-		object_method(reader, ps_close);
-		object_free(reader);
-
-		// If we're 64 bit, then copy the data over
-		if (type == RNBO::DataType::Float64AudioBuffer) {
-			double *ddata = (double *) malloc(info->channels * info->frames * sizeof(double));
-			for (unsigned long i = 0; i < sampleLength; i++) {
-				ddata[i] = fdata[i];
-			}
-			free(fdata);
-			*data = (char *) ddata;
-			*datalen = sampleLength * sizeof(double);
-		} else {
-			*data = (char *) fdata;
-			*datalen = sampleLength * sizeof(float);
-		}
-
-		return err;
-	}
-
-	static void rnbo_data_loader_store(
-		t_rnbo_data_loader *loader,
-		t_symbol *key,
-		t_audio_info *info,
-		long datalen,
-		char *data
-	) {
-
-		systhread_mutex_lock(loader->_mutex);
-		if (loader->_data) {
-			free(loader->_data);
-		}
-
-		memcpy(&loader->_info, info, sizeof(t_audio_info));
-		loader->_data = data;
-		loader->_ready = true;
-		systhread_mutex_unlock(loader->_mutex);
-	}
+	t_rnbo_data_loader *rnbo_data_loader_new(RNBO::DataType::Type type);
+	bool rnbo_data_loader_ready(t_rnbo_data_loader *x);
+	void rnbo_data_loader_free(t_rnbo_data_loader *x);
+	t_max_err rnbo_data_loader_notify(t_rnbo_data_loader *loader, t_symbol *s, t_symbol *msg, void *sender, void *data);
 
 	static t_max_err rnbo_data_loader_storefile(
 		t_rnbo_data_loader *loader,
@@ -88,22 +57,59 @@ extern "C" {
 		short vol,
 		const char *filename
 	) {
-		t_max_err err;
 		t_audio_info info;
 		long datalen = 0;
 		char *data = nullptr;
-		err = loader_loadfile(vol, filename, loader->_type, &info, &datalen, &data);
 
-		if (err == MAX_ERR_NONE) {
-			rnbo_data_loader_store(loader, gensym(key), &info, datalen, data);
-		} else {
-			object_error(nullptr, "%s: can't open file", filename);
+		t_object *reader = (t_object *) object_new(CLASS_NOBOX, gensym("jsoundfile"));
+
+		t_max_err err = (t_max_err) object_method(reader, ps_open, vol, filename, 0, 0);
+		if (err != MAX_ERR_NONE) {
+			return err;
 		}
 
-		return err;
-	}
+		// Get the info
+		info.channels = (t_atom_long) object_method(reader, gensym("getchannelcount"));
+		info.frames = (t_atom_long) object_method(reader, gensym("getlength"));
+		info.samplerate = (t_atom_long) object_method(reader, gensym("getsr"));
+		long sampleLength = info.channels * info.frames;
 
-	t_max_err rnbo_data_loader_notify(t_rnbo_data_loader *loader, t_symbol *s, t_symbol *msg, void *sender, void *data);
+		// Make space
+		float *fdata = (float *) malloc(info.channels * info.frames * sizeof(float));
+
+		// Read in the data
+		object_method(reader, gensym("readfloats"), fdata, 0, info.frames, info.channels);
+
+		// Close it up
+		object_method(reader, ps_close);
+		object_free(reader);
+
+		// If we're 64 bit, then copy the data over
+		if (loader->_type == RNBO::DataType::Float64AudioBuffer) {
+			double *ddata = (double *) malloc(info.channels * info.frames * sizeof(double));
+			for (unsigned long i = 0; i < sampleLength; i++) {
+				ddata[i] = fdata[i];
+			}
+			free(fdata);
+			data = (char *) ddata;
+			datalen = sampleLength * sizeof(double);
+		} else {
+			data = (char *) fdata;
+			datalen = sampleLength * sizeof(float);
+		}
+
+		systhread_mutex_lock(loader->_mutex);
+		if (loader->_data) {
+			free(loader->_data);
+		}
+
+		memcpy(&loader->_info, &info, sizeof(t_audio_info));
+		loader->_data = data;
+		loader->_ready = true;
+		systhread_mutex_unlock(loader->_mutex);
+
+		return MAX_ERR_NONE;
+	}
 
 	void rnbo_data_loader_register()
 	{
@@ -114,21 +120,6 @@ extern "C" {
 		if (s_rnbo_data_loader_class)
 			return;
 
-		s_numtypes = 0;
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('AIFF');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('AIFC');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('ULAW');	//next/sun typed by peak and others
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('WAVE');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('FLAC');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('Sd2f');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('QQQQ');	// or whatever IRCAM snd files are saved as...
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('BINA');	// or whatever IRCAM snd files are saved as...
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('NxTS');	//next/sun typed by soundhack
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('Mp3 ');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('DATA'); // our own 'raw' files
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('M4a ');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('CAF ');
-		s_types[s_numtypes++] = FOUR_CHAR_CODE('wv64');
 
 		auto c = class_new("rnbo_data_loader", (method)rnbo_data_loader_new, (method)rnbo_data_loader_free, (long)sizeof(t_rnbo_data_loader), 0L, A_CANT, 0);
 
@@ -181,7 +172,7 @@ extern "C" {
 		t_fourcc filetype;
 
 		strncpy_zero(pathBuffer, in_filename, MAX_PATH_CHARS);
-		err = locatefile_extended(pathBuffer, out_path, &filetype, s_types, s_numtypes);
+		err = locatefile_extended(pathBuffer, out_path, &filetype, s_types, sizeof(s_types) / sizeof(s_types[0]));
 
 		if (err == MAX_ERR_NONE) {
 			err = path_toabsolutesystempath(*out_path, pathBuffer, pathBuffer);
