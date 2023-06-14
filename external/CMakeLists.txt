@@ -8,6 +8,7 @@ endif()
 include(../../../cmake/RNBOConan.cmake)
 include(../../../cmake/MinGWSTDThreads.cmake)
 
+set(CONAN_PROFILE "default" CACHE STRING "The profile to use for building conan deps, this is useful for cross compiling")
 
 #windows needs a PACKAGE_VERSION, could we get this from some meta data?
 set(PACKAGE_VERSION 1.0.0)
@@ -32,7 +33,11 @@ conan_cmake_configure(
 conan_cmake_autodetect(settings)
 conan_cmake_install(
 	PATH_OR_REFERENCE .
-	SETTINGS ${settings}
+	BUILD missing
+	PROFILE_HOST ${CONAN_PROFILE}
+	PROFILE_BUILD default
+	SETTINGS_HOST build_type=${CMAKE_BUILD_TYPE}
+	SETTINGS_BUILD build_type=${CMAKE_BUILD_TYPE}
 	REMOTE cycling-public
 )
 include(${CMAKE_CURRENT_BINARY_DIR}/conan_paths.cmake)
