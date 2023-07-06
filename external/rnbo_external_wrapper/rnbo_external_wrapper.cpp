@@ -1314,10 +1314,12 @@ class rnbo_external_wrapper :
 		RNBO::CoreObject mRNBOObj;
 };
 
+#ifndef RNBO_MAX_NO_CREATE_MIN_WRAPPER
 #ifndef RNBO_WRAPPER_MAX_NAME
 #error(you must define RNBO_WRAPPER_MAX_NAME)
 #else
 //expand tokens before calling MIN_EXTERNAL_CUSTOM
 #define XMIN_EXTERNAL_CUSTOM(a, b) MIN_EXTERNAL_CUSTOM(a, b)
 XMIN_EXTERNAL_CUSTOM(rnbo_external_wrapper, RNBO_WRAPPER_MAX_NAME);
+#endif
 #endif
