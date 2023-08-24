@@ -523,9 +523,10 @@ class rnbo_external_wrapper :
 	, public c74::min::vector_operator<>
 #endif
 {
-	//don't generate max ref
-	MIN_FLAGS { c74::min::documentation_flags::do_not_generate };
 	public:
+		//don't generate max ref
+		MIN_FLAGS { c74::min::documentation_flags::do_not_generate };
+
 		virtual ~rnbo_external_wrapper() {
 			//make sure the process method isn't currently running
 			LockGuard guard(mDSPStateMutex);
