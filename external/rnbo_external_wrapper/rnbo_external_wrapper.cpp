@@ -57,6 +57,7 @@ namespace {
 //attributes are thread safe as they just read/write parameters, which are thread safe in RNBO
 typedef c74::min::attribute<ParameterValue, c74::min::threadsafe::yes> attr_param;
 typedef c74::min::attribute<c74::min::symbol, c74::min::threadsafe::yes> attr_enum_param;
+typedef c74::min::attribute<bool, c74::min::threadsafe::yes> attr_onoff_param;
 typedef c74::min::attribute<c74::min::symbol, c74::min::threadsafe::no> attr_buffer;
 typedef c74::min::attribute<c74::min::symbol, c74::min::threadsafe::no> attr_transport;
 
@@ -845,6 +846,37 @@ class rnbo_external_wrapper :
 								[this, i]() -> c74::min::atoms {
 									auto v = mEventHandler->getParameterValue(i);
 									return c74::min::atoms { v };
+								}
+							}
+					);
+				} else if (info.steps == 2 && strcmp(info.enumValues[0], "0") == 0 && strcmp(info.enumValues[1], "1") == 0) {
+					a = std::make_shared<attr_onoff_param>(
+							this,
+							name,
+							info.initialValue != 0.0,
+							c74::min::setter {
+								[this, i, info](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
+									if (args.size() > 0) {
+										c74::min::atom in = args[0];
+										switch (in.type()) {
+											case c74::min::message_type::int_argument:
+											case c74::min::message_type::float_argument:
+												{
+													double v = in;
+													mEventHandler->setParameterValue(i, v > 0.0 ? 1.0 : 0.0);
+												}
+												break;
+											default:
+												break;
+										}
+									}
+									return args;
+								}
+							},
+							c74::min::getter {
+								[this, i]() -> c74::min::atoms {
+									c74::max::t_atom_long v = mEventHandler->getParameterValue(i) > 0.0 ? 1 : 0;
+									return { v };
 								}
 							}
 					);
