@@ -985,6 +985,19 @@ class rnbo_external_wrapper :
 			}
 		};
 
+		c74::min::message<> m_bang {
+			this, "bang",
+			[this](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
+				auto it = mMessageInletMap.find(inlet);
+				if (it != mMessageInletMap.end()) {
+					//add tag and send input
+					c74::min::atoms out = {it->second, c74::min::k_sym_bang};
+					handleInportMessage(out);
+				}
+				return {};
+			}
+		};
+
 		//XXX does the type of value really matter?
 		c74::min::attribute<double> mValue {
 			this, "value",
