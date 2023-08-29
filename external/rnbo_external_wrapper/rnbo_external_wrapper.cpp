@@ -621,7 +621,7 @@ class rnbo_external_wrapper :
 					}
 				}
 			} catch (std::exception& e) {
-				cerr << "exception processing inlet json" << c74::min::endl;
+				cerr << "exception processing inlet json: " << e.what() << c74::min::endl;
 			}
 
 			try {
@@ -663,7 +663,7 @@ class rnbo_external_wrapper :
 					}
 				}
 			} catch (std::exception& e) {
-				cerr << "exception processing outlet json" << c74::min::endl;
+				cerr << "exception processing outlet json: " << e.what() << c74::min::endl;
 			}
 
 			try {
@@ -691,7 +691,7 @@ class rnbo_external_wrapper :
 					}
 				}
 			} catch (std::exception& e) {
-				cerr << "exception processing inport json" << c74::min::endl;
+				cerr << "exception processing inport json: " << e.what() << c74::min::endl;
 			}
 
 #endif
@@ -762,7 +762,7 @@ class rnbo_external_wrapper :
 					}
 				}
 			} catch (std::exception& e) {
-				cerr << "exception processing outport json" << c74::min::endl;
+				cerr << "exception processing outport json: " << e.what() << c74::min::endl;
 			}
 #endif
 			auto paramCallback = [this](RNBO::ParameterIndex i) {
