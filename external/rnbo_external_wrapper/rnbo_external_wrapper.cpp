@@ -54,8 +54,23 @@ namespace {
 	const std::regex inportEventInRegex("^in[[:digit:]]+$");
 
 	static MaxPlatformInterface maxPlatformInstance;
-}
 
+	void LoggerOutputFunction(RNBO::LogLevel level, const char *message)
+	{
+		switch (level) {
+				case RNBO::LogLevel::Info:
+					c74::max::object_post(nullptr, message);
+					return;
+				case RNBO::LogLevel::Warning:
+					c74::max::object_warn(nullptr, message);
+					return;
+				case RNBO::LogLevel::Error:
+				default:
+					c74::max::object_error(nullptr, message);
+					return;
+		}
+	}
+}
 
 //attributes are thread safe as they just read/write parameters, which are thread safe in RNBO
 typedef c74::min::attribute<ParameterValue, c74::min::threadsafe::yes> attr_param;
@@ -1043,6 +1058,7 @@ class rnbo_external_wrapper :
 			this, "maxclass_setup",
 			[this](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
 				RNBO::Platform::set(&maxPlatformInstance);
+				RNBO::Logger::getInstance().setLoggerOutputCallback(LoggerOutputFunction);
 
 				c74::max::t_class * c = args[0];
 
