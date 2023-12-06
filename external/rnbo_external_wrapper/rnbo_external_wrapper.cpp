@@ -571,6 +571,11 @@ class rnbo_external_wrapper :
 				[this](const c74::min::atoms& _args, const int _inlet) -> c74::min::atoms {
 					process_nodsp();
 					return { };
+				}),
+			mEventOutClock(this,
+				[this](const c74::min::atoms& _args, const int _inlet) -> c74::min::atoms {
+					send_queued_events();
+					return { };
 				})
 		{
 
@@ -766,8 +771,14 @@ class rnbo_external_wrapper :
 				}
 			);
 
-			MaxExternalEventHandler::MessageEventCallback msgCallback = std::bind(&rnbo_external_wrapper::handleOutportMessage, this, std::placeholders::_1);
-
+			MaxExternalEventHandler::MessageEventCallback msgCallback = [this](MessageEvent event) {
+				if (mProcessing) {
+					mEventOutQueue.try_enqueue(event);
+					mEventOutClock.delay(0);
+				} else {
+					handleOutportMessage(event);
+				}
+			};
 #ifdef RNBO_INCLUDE_DESCRIPTION_FILE
 			try {
 				//we only add a message out if the outport doesn't have a corresponding outlet
@@ -792,8 +803,14 @@ class rnbo_external_wrapper :
 				}
 			};
 			MaxExternalEventHandler::PresetTouchedCallback presetTouched = nullptr;
-			MaxExternalEventHandler::MidiEventCallback midiEventCallback = std::bind(&rnbo_external_wrapper::sendMidiEvent, this, std::placeholders::_1);
-
+			MaxExternalEventHandler::MidiEventCallback midiEventCallback = [this](MidiEvent midiEvent) {
+				if (mProcessing) {
+					mEventOutQueue.try_enqueue(midiEvent);
+					mEventOutClock.delay(0);
+				} else {
+					sendMidiEvent(midiEvent);
+				}
+			};
 			RNBO::ScheduleCallback scheduleCallback = nullptr;
 			if (mIsInLive) {
  				presetTouched = [this]() { mChangedNotifyDefer.set(); };
@@ -1127,6 +1144,23 @@ class rnbo_external_wrapper :
 			}
 		}
 
+		void send_queued_events() {
+			RNBO::EventVariant event;
+			while (mEventOutQueue.try_dequeue(event)) {
+				switch (event.getType()) {
+					case RNBO::Event::Midi:
+						sendMidiEvent(event.getMidiEvent());
+						break;
+					case RNBO::Event::Message:
+						handleOutportMessage(event.getMessageEvent());
+						break;
+					default:
+						// we are only interested in Midi and Message events
+						break;
+				}
+			}
+		}
+
 		void dsp_on(bool on) {
 			LockGuard guard(mDSPStateMutex);
 			mDSPOn = on;
@@ -1157,12 +1191,14 @@ class rnbo_external_wrapper :
 				SampleValue** audioInputs, size_t numInputs,
 				SampleValue** audioOutputs, size_t numOutputs,
 				size_t sampleFrames) {
+			mProcessing.store(true);
 			//couple the rnbotime and this object's scheduler's time
 			mRNBOObj.setCurrentTime(time);
 			if (mSync) {
 				mSync->updateTime(time, mRNBOObj);
 			}
 			mRNBOObj.process(audioInputs, numInputs, audioOutputs, numOutputs, sampleFrames, nullptr, nullptr);
+			mProcessing.store(false);
 		}
 
 #ifdef RNBO_WRAPPER_HAS_AUDIO
@@ -1341,6 +1377,10 @@ class rnbo_external_wrapper :
 		c74::min::logger mErrorLogger {
 			this, c74::min::logger::type::error
 		};
+
+		std::atomic<bool> mProcessing = false;
+		c74::min::fifo<RNBO::EventVariant> mEventOutQueue;
+		c74::min::timer<c74::min::timer_options::deliver_on_scheduler> mEventOutClock;
 
 		std::shared_ptr<c74::min::outlet<>> mMIDIOutlet;
 		std::unique_ptr<Sync> mSync;
