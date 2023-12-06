@@ -772,8 +772,8 @@ class rnbo_external_wrapper :
 			);
 
 			MaxExternalEventHandler::MessageEventCallback msgCallback = [this](MessageEvent event) {
-				if (mProcessing) {
-					mEventOutQueue.try_enqueue(event);
+				if (mProcessing && mIsInLive) {
+					mEventOutQueue.enqueue(event);
 					mEventOutClock.delay(0);
 				} else {
 					handleOutportMessage(event);
@@ -804,14 +804,16 @@ class rnbo_external_wrapper :
 			};
 			MaxExternalEventHandler::PresetTouchedCallback presetTouched = nullptr;
 			MaxExternalEventHandler::MidiEventCallback midiEventCallback = [this](MidiEvent midiEvent) {
-				if (mProcessing) {
-					mEventOutQueue.try_enqueue(midiEvent);
+				if (mProcessing && mIsInLive) {
+					mEventOutQueue.enqueue(midiEvent);
 					mEventOutClock.delay(0);
 				} else {
 					sendMidiEvent(midiEvent);
 				}
 			};
+
 			RNBO::ScheduleCallback scheduleCallback = nullptr;
+
 			if (mIsInLive) {
  				presetTouched = [this]() { mChangedNotifyDefer.set(); };
 				auto x = maxobj();
@@ -1191,14 +1193,14 @@ class rnbo_external_wrapper :
 				SampleValue** audioInputs, size_t numInputs,
 				SampleValue** audioOutputs, size_t numOutputs,
 				size_t sampleFrames) {
-			mProcessing.store(true);
+			mProcessing = true;
 			//couple the rnbotime and this object's scheduler's time
 			mRNBOObj.setCurrentTime(time);
 			if (mSync) {
 				mSync->updateTime(time, mRNBOObj);
 			}
 			mRNBOObj.process(audioInputs, numInputs, audioOutputs, numOutputs, sampleFrames, nullptr, nullptr);
-			mProcessing.store(false);
+			mProcessing = false;
 		}
 
 #ifdef RNBO_WRAPPER_HAS_AUDIO
@@ -1378,7 +1380,7 @@ class rnbo_external_wrapper :
 			this, c74::min::logger::type::error
 		};
 
-		std::atomic<bool> mProcessing = false;
+		bool mProcessing = false;
 		c74::min::fifo<RNBO::EventVariant> mEventOutQueue;
 		c74::min::timer<c74::min::timer_options::deliver_on_scheduler> mEventOutClock;
 
