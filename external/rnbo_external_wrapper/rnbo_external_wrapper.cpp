@@ -549,6 +549,7 @@ class rnbo_external_wrapper :
 		virtual ~rnbo_external_wrapper() {
 			//make sure the process method isn't currently running
 			LockGuard guard(mDSPStateMutex);
+			mSetupClock.stop();
 			//stop the non audio thread processor
 			mProcessClock.stop();
 			//destroy buffers before killing notify, because we get a callback
@@ -557,12 +558,22 @@ class rnbo_external_wrapper :
 		}
 
 		rnbo_external_wrapper(const c74::min::atoms& args = {}) :
+			mSetupClock(this,
+				[this](const c74::min::atoms& _args, const int _inlet) -> c74::min::atoms {
+#ifdef RNBO_WRAPPER_HAS_AUDIO
+					mDSPOn = c74::max::sys_getdspobjdspstate(x);
+#endif
+					if (!mDSPOn)
+						mProcessClock.delay(0); //start the scheduler
+					return { };
+				}),
 			mProcessClock(this,
 				[this](const c74::min::atoms& _args, const int _inlet) -> c74::min::atoms {
 					process_nodsp();
 					return { };
 				})
 		{
+
 			//some behaviors are slightly different in live
 			auto p = c74::max::gensym("#P");
 			if (p) {
@@ -839,7 +850,8 @@ class rnbo_external_wrapper :
 								[this, i](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
 									double in = args[0];
 									//cout << "normal set: " << in << c74::min::endl;
-									mEventHandler->setParameterValue(i, in);
+									if (mAttributesAreSetup)
+										mEventHandler->setParameterValue(i, in);
 									return args;
 								}
 							},
@@ -862,6 +874,7 @@ class rnbo_external_wrapper :
 										switch (in.type()) {
 											case c74::min::message_type::int_argument:
 											case c74::min::message_type::float_argument:
+												if (mAttributesAreSetup)
 												{
 													double v = in;
 													mEventHandler->setParameterValue(i, v > 0.0 ? 1.0 : 0.0);
@@ -903,6 +916,7 @@ class rnbo_external_wrapper :
 										c74::min::atom in = args[0];
 										switch (in.type()) {
 											case c74::min::message_type::symbol_argument:
+												if (mAttributesAreSetup)
 												{
 													auto f = lookup.find(in);
 													if (f != lookup.end()) {
@@ -912,6 +926,7 @@ class rnbo_external_wrapper :
 												break;
 											case c74::min::message_type::int_argument:
 											case c74::min::message_type::float_argument:
+												if (mAttributesAreSetup)
 												{
 													double index = in;
 													mEventHandler->setParameterValue(i, std::max(std::min(index, static_cast<double>(info.steps - 1)), 0.0));
@@ -937,6 +952,7 @@ class rnbo_external_wrapper :
 				mAttributeLookup.emplace(i, a);
 			}
 
+			mAttributesAreSetup = true;
 			mDSPOn = false;
 
 #ifdef RNBO_WRAPPER_INC_TRANSPORT_ATTR
@@ -1079,16 +1095,13 @@ class rnbo_external_wrapper :
 			this, "setup",
 			[this](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
 				auto x = maxobj();
-#ifdef RNBO_WRAPPER_HAS_AUDIO
-				mDSPOn = c74::max::sys_getdspobjdspstate(x);
-#endif
 				object_parameter_init_flags((c74::max::t_object *)x, c74::max::PARAM_TYPE::PARAM_TYPE_BLOB, c74::max::PARAM_FLAGS::PARAM_FLAGS_FORCE_TYPE);
 				//make sure that the maxobj is valid when we create sync
 				mSync = std::make_unique<Sync>(this);
 				mSync->updateCache();
 				//c74::max::object_attr_setlong(x, c74::max::gensym("parameter_enable"), 1);
-				if (!mDSPOn)
-					mProcessClock.delay(0); //start the scheduler
+
+				mSetupClock.delay(0); //post init setup
 				return {};
 			}
     };
@@ -1298,6 +1311,7 @@ class rnbo_external_wrapper :
 		bool mDSPOn = false;
 		Mutex mDSPStateMutex;
 
+		c74::min::timer<c74::min::timer_options::defer_delivery> mSetupClock;
 		c74::min::timer<c74::min::timer_options::deliver_on_scheduler> mProcessClock;
 
 		c74::min::queue<> mChangedNotifyDefer { this,
@@ -1331,6 +1345,9 @@ class rnbo_external_wrapper :
 		std::shared_ptr<c74::min::outlet<>> mMIDIOutlet;
 		std::unique_ptr<Sync> mSync;
 		RNBO::CoreObject mRNBOObj;
+
+		//work around double trigger for parameters by not sending attribute values in at attr init
+		bool mAttributesAreSetup = false;
 };
 
 #ifndef RNBO_MAX_NO_CREATE_MIN_WRAPPER
