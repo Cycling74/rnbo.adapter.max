@@ -707,7 +707,7 @@ class rnbo_external_wrapper :
 						if (std::regex_match(name, inportEventInRegex)) {
 							continue;
 						}
-						mInportMessages.emplace_back(std::make_unique<c74::min::message<>>(this, name,
+						mInportMessages.emplace_back(std::make_unique<c74::min::message<c74::min::threadsafe::yes>>(this, name,
 							[this, name](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
 								//add the selector (as a symbol) and handle
 								c74::min::atoms withSelector = { c74::min::symbol(name.c_str()) };
@@ -758,7 +758,7 @@ class rnbo_external_wrapper :
 				mOutlets.emplace_back(mMIDIOutlet);
 			}
 
-			mNotify = std::make_unique<c74::min::message<>>(this, "notify",
+			mNotify = std::make_unique<c74::min::message<c74::min::threadsafe::yes>>(this, "notify",
 				[this](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
 					if (mSync && (args.size() == 5)) {
 						c74::min::notification n { args };
@@ -1018,7 +1018,7 @@ class rnbo_external_wrapper :
 				}
 		};
 
-		c74::min::message<> message {
+		c74::min::message<c74::min::threadsafe::yes> message {
 			this, "message",
 			[this](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
 				handleInportMessage(args);
@@ -1026,7 +1026,7 @@ class rnbo_external_wrapper :
 			}
 		};
 
-		c74::min::message<> m_float {
+		c74::min::message<c74::min::threadsafe::yes> m_float {
 			this, "float",
 			[this](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
 				auto it = mMessageInletMap.find(inlet);
@@ -1039,7 +1039,7 @@ class rnbo_external_wrapper :
 			}
 		};
 
-		c74::min::message<> m_list {
+		c74::min::message<c74::min::threadsafe::yes> m_list {
 			this, "list",
 			[this](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
 				auto it = mMessageInletMap.find(inlet);
@@ -1053,7 +1053,7 @@ class rnbo_external_wrapper :
 			}
 		};
 
-		c74::min::message<> m_bang {
+		c74::min::message<c74::min::threadsafe::yes> m_bang {
 			this, "bang",
 			[this](const c74::min::atoms& args, const int inlet) -> c74::min::atoms {
 				auto it = mMessageInletMap.find(inlet);
@@ -1319,7 +1319,7 @@ class rnbo_external_wrapper :
 		std::unique_ptr<MaxExternalEventHandler> mEventHandler;
 
 		//pointer to notify, needs to be dealloced after mDataHandler
-		std::unique_ptr<c74::min::message<>> mNotify;
+		std::unique_ptr<c74::min::message<c74::min::threadsafe::yes>> mNotify;
 
 		std::vector<std::unique_ptr<c74::min::inlet<>>> mInlets;
 		std::vector<std::shared_ptr<c74::min::outlet<>>> mOutlets;
@@ -1337,7 +1337,7 @@ class rnbo_external_wrapper :
 		std::unordered_map<RNBO::Index, std::shared_ptr<c74::min::attribute_base>> mAttributeLookup;
 		std::unique_ptr<attr_transport> mTransportAttr;
 
-		std::vector<std::unique_ptr<c74::min::message<>>> mInportMessages;
+		std::vector<std::unique_ptr<c74::min::message<c74::min::threadsafe::yes>>> mInportMessages;
 
 		std::vector<std::unique_ptr<RNBO::MidiStreamParser>> mMidiProcess;
 		long mMidiProcessStart = 0;
