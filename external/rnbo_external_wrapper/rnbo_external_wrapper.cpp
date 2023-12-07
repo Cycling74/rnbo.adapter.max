@@ -561,7 +561,7 @@ class rnbo_external_wrapper :
 			mSetupClock(this,
 				[this](const c74::min::atoms& _args, const int _inlet) -> c74::min::atoms {
 #ifdef RNBO_WRAPPER_HAS_AUDIO
-					mDSPOn = c74::max::sys_getdspobjdspstate(x);
+					mDSPOn = c74::max::sys_getdspobjdspstate(maxobj());
 #endif
 					if (!mDSPOn)
 						mProcessClock.delay(0); //start the scheduler
