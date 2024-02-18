@@ -19,8 +19,13 @@ namespace MaxPresetAdapter {
 					dictionary_appendfloat(presetDict, key, value);
 					break;
 				}
-				case ValueHolder::INDEX: {
-					Index value = (Index)entry.second;
+				case ValueHolder::UINT32: {
+					UInt32 value = (UInt32)entry.second;
+					dictionary_appendfloat(presetDict, key, value);
+					break;
+				}
+				case ValueHolder::UINT64: {
+					UInt64 value = (UInt64)entry.second;
 					dictionary_appendfloat(presetDict, key, value);
 					break;
 				}
