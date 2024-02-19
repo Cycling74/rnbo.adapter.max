@@ -14,8 +14,13 @@ namespace MaxPresetAdapter {
 			t_symbol *key = gensym(entry.first.c_str());
 			auto type = entry.second.getType();
 			switch (type) {
-				case ValueHolder::NUMBER: {
-					number value = (number)entry.second;
+				case ValueHolder::FLOAT: {
+					float value = (float)entry.second;
+					dictionary_appendfloat(presetDict, key, value);
+					break;
+				}
+				case ValueHolder::DOUBLE: {
+					double value = (double)entry.second;
 					dictionary_appendfloat(presetDict, key, value);
 					break;
 				}
