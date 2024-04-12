@@ -1,7 +1,9 @@
+#define RNBO_USECUSTOMPLATFORMPRINT
+
 #include <RNBO.h>
+#include <RNBO_MaxExternalPlatform.h>
 #include <RNBO_MaxPresetAdapter.h>
 #include <RNBO_MidiStreamParser.h>
-#include <RNBO_MaxPlatformInterface.h>
 #include <json/json.hpp>
 #include <c74_min.h>
 #include <atomic>
@@ -52,8 +54,6 @@ using c74::min::flags;
 
 namespace {
 	const std::regex inportEventInRegex("^in[[:digit:]]+$");
-
-	static MaxPlatformInterface maxPlatformInstance;
 
 	void LoggerOutputFunction(RNBO::LogLevel level, const char *message)
 	{
@@ -1099,7 +1099,6 @@ class rnbo_external_wrapper :
 		c74::min::message<> mMaxClassSetup {
 			this, "maxclass_setup",
 			[this](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
-				RNBO::Platform::set(&maxPlatformInstance);
 				RNBO::Logger::getInstance().setLoggerOutputCallback(LoggerOutputFunction);
 
 				c74::max::t_class * c = args[0];
