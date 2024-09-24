@@ -536,6 +536,9 @@ void rnbowrapper_parameter_attr_override(void *_x, t_object *valueof)
 	c74::max::object_attr_addattr_parse(valueof, "parameter_invisible", "invisible", sym_long, 0, "1");
 }
 
+extern "C"
+void rnbowrapper_getinstanceattrs(void* _x, long* count, t_symbol*** attrnames);
+
 class rnbo_external_wrapper :
 	public c74::min::object<rnbo_external_wrapper>
 #if RNBO_WRAPPER_HAS_AUDIO
@@ -1102,6 +1105,7 @@ class rnbo_external_wrapper :
 				c74::max::t_class * c = args[0];
 
 				c74::max::class_addmethod(c, (c74::max::method) rnbowrapper_parameter_attr_override, "parameter_attr_override", c74::max::A_CANT, 0);
+				c74::max::class_addmethod(c, (c74::max::method) rnbowrapper_getinstanceattrs, "getinstanceattrs", c74::max::A_CANT, 0);
 
 				c74::max::t_atom a;
 				//c74::max::atom_setlong(&a, PARAM_TYPE_BLOB);
@@ -1395,6 +1399,31 @@ class rnbo_external_wrapper :
 		//work around double trigger for parameters by not sending attribute values in at attr init
 		bool mAttributesAreSetup = false;
 };
+
+extern "C"
+void rnbowrapper_getinstanceattrs(void* _x, long* count, t_symbol*** attrnames)
+{
+	RNBO::CoreObject rnbocore;
+	//only pick valid names
+	std::vector<std::string> names;
+
+	for (RNBO::ParameterIndex i = 0; i < rnbocore.getNumParameters(); i++) {
+		ParameterInfo info;
+		rnbocore.getParameterInfo(i, &info);
+
+		//only supporting numbers right now
+		//don't bind invisible or debug
+		if (info.type != ParameterType::ParameterTypeNumber || !info.visible || info.debug)
+			continue;
+		names.push_back(rnbocore.getParameterId(i));
+	}
+
+	*count = names.size();
+	*attrnames = (t_symbol**)c74::max::sysmem_newptr(sizeof(t_symbol*) * *count);
+	for (auto i = 0; i < names.size(); i++) {
+		(*attrnames)[i] = c74::max::gensym(names[i].c_str());
+	}
+}
 
 #ifndef RNBO_MAX_NO_CREATE_MIN_WRAPPER
 #ifndef RNBO_WRAPPER_MAX_NAME
