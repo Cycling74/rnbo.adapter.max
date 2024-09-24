@@ -1419,9 +1419,11 @@ void rnbowrapper_getinstanceattrs(void* _x, long* count, t_symbol*** attrnames)
 	}
 
 	*count = names.size();
-	*attrnames = (t_symbol**)c74::max::sysmem_newptr(sizeof(t_symbol*) * *count);
-	for (auto i = 0; i < names.size(); i++) {
-		(*attrnames)[i] = c74::max::gensym(names[i].c_str());
+	if (names.size() > 0) {
+		*attrnames = (t_symbol**)c74::max::sysmem_newptr(sizeof(t_symbol*) * *count);
+		for (auto i = 0; i < names.size(); i++) {
+			(*attrnames)[i] = c74::max::gensym(names[i].c_str());
+		}
 	}
 }
 
