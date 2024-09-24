@@ -860,7 +860,11 @@ class rnbo_external_wrapper :
 					continue;
 				std::string name = mRNBOObj.getParameterId(i);
 				std::shared_ptr<c74::min::attribute_base> a;
+				c74::min::range param_range;
+
 				if (info.enumValues == nullptr) {
+					 param_range.push_back(std::to_string(info.min));
+					 param_range.push_back(std::to_string(info.max));
 					 a = std::make_shared<attr_param>(
 							this,
 							name,
@@ -879,7 +883,8 @@ class rnbo_external_wrapper :
 									auto v = mEventHandler->getParameterValue(i);
 									return c74::min::atoms { v };
 								}
-							}
+							},
+							param_range
 					);
 				} else if (info.steps == 2 && strcmp(info.enumValues[0], "0") == 0 && strcmp(info.enumValues[1], "1") == 0) {
 					a = std::make_shared<attr_onoff_param>(
@@ -917,12 +922,11 @@ class rnbo_external_wrapper :
 					//build out list of strings and lookups to convert to from rnbo ParameterValue and max symbols
 					std::string initial(info.enumValues[std::min(std::max(0, static_cast<int>(info.initialValue)), info.steps - 1)]);
 					//the atoms that min uses to identify the list of enum values
-					c74::min::range values;
 					//lookup to find a parameter value for an enum symbol (string)
 					std::unordered_map<std::string, double> lookup;
 					for (int e = 0; e < info.steps; e++) {
 						std::string s(info.enumValues[e]);
-						values.push_back(s);
+						param_range.push_back(s);
 						lookup[s] = static_cast<ParameterValue>(e);
 					}
 					a = std::make_shared<attr_enum_param>(
@@ -959,12 +963,12 @@ class rnbo_external_wrapper :
 								}
 							},
 							c74::min::getter {
-								[this, i, values]() -> c74::min::atoms {
-									auto v = std::min(std::max(static_cast<int>(mEventHandler->getParameterValue(i)), 0), static_cast<int>(values.size() - 1));
-									return { values[v] };
+								[this, i, param_range]() -> c74::min::atoms {
+									auto v = std::min(std::max(static_cast<int>(mEventHandler->getParameterValue(i)), 0), static_cast<int>(param_range.size() - 1));
+									return { param_range[v] };
 								}
 							},
-							values
+							param_range
 					);
 				}
 				mAttributes.emplace_back(a);
