@@ -1150,7 +1150,7 @@ class rnbo_external_wrapper :
 				int len = midiEvent.getLength();
 				ConstByteArray data = midiEvent.getData();
 				for (int i = 0; i < len; i++)
-					mMIDIOutlet->send(data[i]);
+					mMIDIOutlet->send(static_cast<int>(data[i]));
 			}
 		}
 
