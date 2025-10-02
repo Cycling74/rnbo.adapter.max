@@ -1289,18 +1289,35 @@ class rnbo_external_wrapper :
 			const char* tag = mRNBOObj.resolveTag(event.getTag());
 			c74::min::atoms atoms = { tag };
 
+			auto eventoutlet = mMessageOutletMap.find(atoms[0]);
+
 			switch (event.getType()) {
 				case MessageEvent::Type::Number:
+					if (eventoutlet != mMessageOutletMap.end() && mOutlets.size() > eventoutlet->second) {
+						mOutlets[eventoutlet->second]->send(event.getNumValue());
+						return;
+					}
 					atoms.push_back(event.getNumValue());
 					break;
 				case MessageEvent::Type::Bang:
+					if (eventoutlet != mMessageOutletMap.end() && mOutlets.size() > eventoutlet->second) {
+						mOutlets[eventoutlet->second]->send(c74::min::k_sym_bang);
+						return;
+					}
 					atoms.push_back(c74::min::k_sym_bang);
 					break;
 				case MessageEvent::Type::List:
 					{
 						std::shared_ptr<const RNBO::list> elist = event.getListValue();
-						for (size_t i = 0; i < elist->length; i++)
+						for (size_t i = 0; i < elist->length; i++) {
 							atoms.push_back(elist->operator[](i));
+						}
+						if (eventoutlet != mMessageOutletMap.end() && mOutlets.size() > eventoutlet->second) {
+							//remove tag
+							c74::min::atoms out(atoms.begin() + 1, atoms.end());
+							mOutlets[eventoutlet->second]->send(out);
+							return;
+						}
 					}
 					break;
 				case MessageEvent::Type::Invalid:
@@ -1309,15 +1326,6 @@ class rnbo_external_wrapper :
 					return; //TODO warning message?
 			}
 
-			if (atoms.size() > 0 && atoms[0].type() == c74::min::message_type::symbol_argument) {
-				auto it = mMessageOutletMap.find(atoms[0]);
-				if (it != mMessageOutletMap.end() && mOutlets.size() > it->second) {
-					//remove tag
-					c74::min::atoms out(atoms.begin() + 1, atoms.end());
-					mOutlets[it->second]->send(out);
-					return;
-				}
-			}
 			if (mMessageOutlet)
 				mMessageOutlet->send(atoms);
 		}
