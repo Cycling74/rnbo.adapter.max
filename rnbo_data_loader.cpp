@@ -1,22 +1,27 @@
 #include "rnbo_data_loader.h"
 #include <atomic>
 #include <3rdparty/readerwriterqueue/readerwriterqueue.h>
+#include <ext_sysfile.h>
 
 namespace {
 	t_class *s_rnbo_data_loader_class = nullptr;
 
-	struct loader_audio_data {
+	struct loader_data {
 		size_t channels = 0;
 		size_t frames = 0;
 		RNBO::number samplerate = 0.0;
 		size_t bytes = 0;
 		char * data = nullptr;
 
-		loader_audio_data(size_t cs, size_t fms, RNBO::number sr) : channels(cs), frames(fms), samplerate(sr) {
+		loader_data(size_t cs, size_t fms, RNBO::number sr) : channels(cs), frames(fms), samplerate(sr) {
 			data = reinterpret_cast<char *>(new float[channels * frames]);
 		}
 
-		~loader_audio_data() {
+		loader_data(size_t cs) : bytes(cs) {
+			data = new char[cs];
+		}
+
+		~loader_data() {
 			if (data) {
 				delete [] data;
 			}
@@ -41,9 +46,12 @@ namespace {
 		FOUR_CHAR_CODE('DATA'), // our own 'raw' files
 		FOUR_CHAR_CODE('M4a '),
 		FOUR_CHAR_CODE('CAF '),
-		FOUR_CHAR_CODE('wv64')
+		FOUR_CHAR_CODE('wv64'),
+		FOUR_CHAR_CODE('Midi') //MIDI
 	};
 }
+
+using RNBO::DataType;
 
 extern "C" {
 
@@ -57,10 +65,10 @@ extern "C" {
 		t_symbol				*_last_requested;
 		t_object				*_remote_resource;
 
-		std::atomic<loader_audio_data *> _newinfo;
-		loader_audio_data * _activeinfo;
+		std::atomic<loader_data *> _newinfo;
+		loader_data * _activeinfo;
 
-		ReaderWriterQueue<loader_audio_data *, 32> * _cleanup;
+		ReaderWriterQueue<loader_data *, 32> * _cleanup;
 		void * _cleanupqelem;
 	};
 
@@ -73,16 +81,47 @@ extern "C" {
 		t_rnbo_data_loader *loader,
 		const char *key,
 		short vol,
-		const char *filename
+		const char *filename,
+		const t_fourcc filetype
 	) {
+		t_max_err err = MAX_ERR_NONE;
+		if (loader->_type == DataType::TypedArray) {
+			if (filetype == FOUR_CHAR_CODE('Midi') || filetype == FOUR_CHAR_CODE('DATA')) {
+				t_filehandle fh;
+				err = path_opensysfile(filename, vol, &fh, READ_PERM);
+				if (err == MAX_ERR_NONE) {
+					t_ptr_size bytes = 0;
+					err = sysfile_geteof(fh, &bytes);
+					if (err == MAX_ERR_NONE && bytes > 0) {
+						loader_data * info = new loader_data(bytes);
+						err = sysfile_read(fh, &bytes, info->data);
+						if (err == MAX_ERR_NONE) {
+							info->bytes = bytes;
+							info = loader->_newinfo.exchange(info);
+							if (info != nullptr) {
+								delete info;
+							}
+						} else {
+							delete info;
+						}
+					}
+					sysfile_close(fh);
+				}
+			}
+			if (err != MAX_ERR_NONE) {
+				object_error(nullptr, "%s: failed to read", filename);
+			}
+			return err;
+		}
+
 		t_object *reader = (t_object *) object_new(CLASS_NOBOX, gensym("jsoundfile"));
 
-		t_max_err err = (t_max_err) object_method(reader, ps_open, vol, filename, 0, 0);
+		err = (t_max_err) object_method(reader, ps_open, vol, filename, 0, 0);
 		if (err != MAX_ERR_NONE) {
 			return err;
 		}
 
-		loader_audio_data * info = new loader_audio_data(
+		loader_data * info = new loader_data(
 				(t_atom_long) object_method(reader, gensym("getchannelcount")),
 				(t_atom_long) object_method(reader, gensym("getlength")),
 				(t_atom_long) object_method(reader, gensym("getsr")));
@@ -99,7 +138,7 @@ extern "C" {
 		object_free(reader);
 
 		// If we're 64 bit, then copy the data over
-		if (loader->_type == RNBO::DataType::Float64AudioBuffer) {
+		if (loader->_type == DataType::Float64AudioBuffer || (loader->_type == DataType::SampleAudioBuffer && sizeof(RNBO::SampleValue) == sizeof(double))) {
 			double *ddata = new double[info->channels * info->frames];
 			for (unsigned long i = 0; i < sampleLength; i++) {
 				ddata[i] = fdata[i];
@@ -107,8 +146,12 @@ extern "C" {
 			delete [] fdata;
 			info->data = reinterpret_cast<char *>(ddata);
 			info->bytes = sampleLength * sizeof(double);
-		} else {
+		} else if (loader->_type == DataType::Float32AudioBuffer || (loader->_type == DataType::SampleAudioBuffer && sizeof(RNBO::SampleValue) == sizeof(float))) {
 			info->bytes = sampleLength * sizeof(float);
+		} else {
+			object_error(nullptr, "%s: don't know how to load for datatype", filename);
+			delete info;
+			return MAX_ERR_GENERIC;
 		}
 
 		info = loader->_newinfo.exchange(info);
@@ -145,7 +188,7 @@ extern "C" {
 			loader->_last_requested = nullptr;
 			loader->_activeinfo = nullptr;
 			loader->_newinfo = nullptr;
-			loader->_cleanup = new ReaderWriterQueue<loader_audio_data *, 32>(32);
+			loader->_cleanup = new ReaderWriterQueue<loader_data *, 32>(32);
 			loader->_cleanupqelem = qelem_new(loader, (method) rnbo_data_loader_drain);
 		}
 
@@ -154,7 +197,7 @@ extern "C" {
 
 	void rnbo_data_loader_drain(t_rnbo_data_loader *loader) {
 		if (loader->_cleanup) {
-			loader_audio_data * info;
+			loader_data * info;
 			while (loader->_cleanup->try_dequeue(info)) {
 				delete info;
 			}
@@ -185,10 +228,9 @@ extern "C" {
 		}
 	}
 
-	static t_max_err rnbo_data_locatefile(const char *in_filename, short *out_path, char *out_filename) {
+	static t_max_err rnbo_data_locatefile(const char *in_filename, short *out_path, char *out_filename, t_fourcc& filetype) {
 		t_max_err err;
 		char pathBuffer[MAX_PATH_CHARS];
-		t_fourcc filetype;
 
 		strncpy_zero(pathBuffer, in_filename, MAX_PATH_CHARS);
 		err = locatefile_extended(pathBuffer, out_path, &filetype, s_types, sizeof(s_types) / sizeof(s_types[0]));
@@ -219,10 +261,11 @@ extern "C" {
 		// Locate the file
 		char out_filename[MAX_PATH_CHARS];
 		short out_path;
-		t_max_err err = rnbo_data_locatefile(filename, &out_path, out_filename);
+		t_fourcc out_filetype;
+		t_max_err err = rnbo_data_locatefile(filename, &out_path, out_filename, out_filetype);
 
 		if (err == MAX_ERR_NONE) {
-			err = rnbo_data_loader_storefile(loader, filename, out_path, out_filename);
+			err = rnbo_data_loader_storefile(loader, filename, out_path, out_filename, out_filetype);
 		} else {
 			object_error(nullptr, "%s: can't open file", filename);
 		}
@@ -266,7 +309,8 @@ extern "C" {
 					const short vol = (t_atom_long) object_method(sender, sym_vol);
 
 					if (filename != NULL && vol != -1) {
-						rnbo_data_loader_storefile(loader, url->s_name, vol, filename->s_name);
+						t_fourcc filetype = 0; //don't care
+						rnbo_data_loader_storefile(loader, url->s_name, vol, filename->s_name, filetype);
 					} else {
 						showError = true;
 					}
@@ -311,12 +355,19 @@ namespace RNBO {
 
 		auto info = loader->_newinfo.exchange(nullptr);
 		if (info != nullptr && info != loader->_activeinfo) {
-			if (loader->_type == DataType::Float64AudioBuffer) {
+			if (loader->_type == DataType::Float64AudioBuffer || (loader->_type == DataType::SampleAudioBuffer && sizeof(RNBO::SampleValue) == sizeof(double))) {
 				Float64AudioBuffer newType(info->channels, info->samplerate);
 				updateDataRef(dataRefIndex, info->data, info->bytes, newType);
-			} else {
+			} else if (loader->_type == DataType::TypedArray) {
+				DataType newType;
+				newType.type = loader->_type;
+				updateDataRef(dataRefIndex, info->data, info->bytes, newType);
+			} else if (loader->_type == DataType::Float32AudioBuffer || (loader->_type == DataType::SampleAudioBuffer && sizeof(RNBO::SampleValue) == sizeof(float))) {
 				Float32AudioBuffer newType(info->channels, info->samplerate);
 				updateDataRef(dataRefIndex, info->data, info->bytes, newType);
+			} else {
+				//don't know how to handle
+				return;
 			}
 
 			if (loader->_activeinfo != nullptr) {
