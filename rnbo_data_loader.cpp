@@ -47,7 +47,8 @@ namespace {
 		FOUR_CHAR_CODE('M4a '),
 		FOUR_CHAR_CODE('CAF '),
 		FOUR_CHAR_CODE('wv64'),
-		FOUR_CHAR_CODE('Midi') //MIDI
+		FOUR_CHAR_CODE('Midi'), //MIDI
+		FOUR_CHAR_CODE('BMP ') //bitmap
 	};
 }
 
@@ -86,7 +87,7 @@ extern "C" {
 	) {
 		t_max_err err = MAX_ERR_NONE;
 		if (loader->_type == DataType::TypedArray) {
-			if (filetype == FOUR_CHAR_CODE('Midi') || filetype == FOUR_CHAR_CODE('DATA')) {
+			if (filetype == FOUR_CHAR_CODE('Midi') || filetype == FOUR_CHAR_CODE('DATA') || filetype == FOUR_CHAR_CODE('BMP ')) {
 				t_filehandle fh;
 				err = path_opensysfile(filename, vol, &fh, READ_PERM);
 				if (err == MAX_ERR_NONE) {
