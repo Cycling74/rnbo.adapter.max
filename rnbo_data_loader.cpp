@@ -87,27 +87,25 @@ extern "C" {
 	) {
 		t_max_err err = MAX_ERR_NONE;
 		if (loader->_type == DataType::TypedArray) {
-			if (filetype == FOUR_CHAR_CODE('Midi') || filetype == FOUR_CHAR_CODE('DATA') || filetype == FOUR_CHAR_CODE('BMP ')) {
-				t_filehandle fh;
-				err = path_opensysfile(filename, vol, &fh, READ_PERM);
-				if (err == MAX_ERR_NONE) {
-					t_ptr_size bytes = 0;
-					err = sysfile_geteof(fh, &bytes);
-					if (err == MAX_ERR_NONE && bytes > 0) {
-						loader_data * info = new loader_data(bytes);
-						err = sysfile_read(fh, &bytes, info->data);
-						if (err == MAX_ERR_NONE) {
-							info->bytes = bytes;
-							info = loader->_newinfo.exchange(info);
-							if (info != nullptr) {
-								delete info;
-							}
-						} else {
+			t_filehandle fh;
+			err = path_opensysfile(filename, vol, &fh, READ_PERM);
+			if (err == MAX_ERR_NONE) {
+				t_ptr_size bytes = 0;
+				err = sysfile_geteof(fh, &bytes);
+				if (err == MAX_ERR_NONE && bytes > 0) {
+					loader_data * info = new loader_data(bytes);
+					err = sysfile_read(fh, &bytes, info->data);
+					if (err == MAX_ERR_NONE) {
+						info->bytes = bytes;
+						info = loader->_newinfo.exchange(info);
+						if (info != nullptr) {
 							delete info;
 						}
+					} else {
+						delete info;
 					}
-					sysfile_close(fh);
 				}
+				sysfile_close(fh);
 			}
 			if (err != MAX_ERR_NONE) {
 				object_error(nullptr, "%s: failed to read", filename);
@@ -229,12 +227,20 @@ extern "C" {
 		}
 	}
 
-	static t_max_err rnbo_data_locatefile(const char *in_filename, short *out_path, char *out_filename, t_fourcc& filetype) {
+	static t_max_err rnbo_data_locatefile(const char *in_filename, short *out_path, char *out_filename, t_fourcc& filetype, RNBO::DataType::Type rnbotype) {
 		t_max_err err;
 		char pathBuffer[MAX_PATH_CHARS];
+		const t_fourcc * filter = s_types;
+		size_t filterlen = sizeof(s_types) / sizeof(s_types[0]);
+
+		//don't filter based on fourcc for TypedArray
+		if (rnbotype == DataType::Type::TypedArray) {
+			filter = nullptr;
+			filterlen = 0;
+		}
 
 		strncpy_zero(pathBuffer, in_filename, MAX_PATH_CHARS);
-		err = locatefile_extended(pathBuffer, out_path, &filetype, s_types, sizeof(s_types) / sizeof(s_types[0]));
+		err = locatefile_extended(pathBuffer, out_path, &filetype, filter, filterlen);
 
 		if (err == MAX_ERR_NONE) {
 			err = path_toabsolutesystempath(*out_path, pathBuffer, pathBuffer);
@@ -263,7 +269,7 @@ extern "C" {
 		char out_filename[MAX_PATH_CHARS];
 		short out_path;
 		t_fourcc out_filetype;
-		t_max_err err = rnbo_data_locatefile(filename, &out_path, out_filename, out_filetype);
+		t_max_err err = rnbo_data_locatefile(filename, &out_path, out_filename, out_filetype, loader->_type);
 
 		if (err == MAX_ERR_NONE) {
 			err = rnbo_data_loader_storefile(loader, filename, out_path, out_filename, out_filetype);
