@@ -61,3 +61,13 @@ if (BUILD_SYSTEM_IS_MINGW)
 		-static-libstdc++
 	)
 endif()
+
+if (MSVC)
+	target_compile_options(${PROJECT_NAME} PRIVATE
+		$<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:/fp:fast>
+	)
+else()
+	target_compile_options(${PROJECT_NAME} PRIVATE
+		$<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:-ffast-math>
+	)
+endif()
