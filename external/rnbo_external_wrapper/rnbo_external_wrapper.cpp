@@ -248,7 +248,9 @@ class MaxExternalDataHandler : public RNBO::ExternalDataHandler {
 	public:
 		MaxExternalDataHandler(c74::min::object_base * owner, RNBO::CoreObject& rnbo) {
 			static t_symbol *rnbo_data_loader_class = c74::max::gensym("rnbo_data_loader");
-			static t_symbol *rnbo_buffer_refclass = c74::max::gensym("rnbo_bufferref");
+			//the class name is versioned with the struct layout, so externals built against a
+			//different layout never resolve to each other's class
+			static t_symbol *rnbo_buffer_refclass = c74::max::gensym(RNBO_BUFFERREF_CLASSNAME);
 			static t_symbol *bufferclass = c74::max::gensym("buffer~");
 			static t_symbol *url_sym = c74::max::gensym("url");
 			static t_symbol *replace_sym = c74::max::gensym("replace");
