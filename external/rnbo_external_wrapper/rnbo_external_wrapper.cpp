@@ -558,6 +558,11 @@ class rnbo_external_wrapper :
 			//destroy buffers before killing notify, because we get a callback
 			mDataHandler.reset();
 			mNotify.reset();
+			//the event handler owns the parameter interfaces, the synchronous one (Live only)
+			//unregisters from the engine in its destructor. mRNBOObj is declared after
+			//mEventHandler and would otherwise be destroyed first, leaving that destructor
+			//with a dangling engine reference.
+			mEventHandler.reset();
 		}
 
 		rnbo_external_wrapper(const c74::min::atoms& args = {}) :
@@ -1141,7 +1146,9 @@ class rnbo_external_wrapper :
 		}
 
 		void trigger(MillisecondTime time) {
-			mEventHandler->scheduleTriggerEvent(time);
+			//a schedulef'd trigger can still fire while we are being torn down
+			if (mEventHandler)
+				mEventHandler->scheduleTriggerEvent(time);
 		}
 
 		void sendMidiEvent(MidiEvent midiEvent) {
