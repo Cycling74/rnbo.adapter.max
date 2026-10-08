@@ -20,6 +20,7 @@ using RNBO::patcher_description;
 using c74::max::t_symbol;
 using c74::max::t_max_err;
 using c74::max::t_buffer_ref;
+using c74::max::t_buffer_obj;
 using c74::max::t_object;
 #include <adapters/max/rnbo_bufferref.h>
 
