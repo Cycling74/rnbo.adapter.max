@@ -59,6 +59,7 @@ namespace {
 	void LoggerOutputFunction(RNBO::LogLevel level, const char *message)
 	{
 		switch (level) {
+				case RNBO::LogLevel::Debug:
 				case RNBO::LogLevel::Info:
 					c74::max::object_post(nullptr, message);
 					return;
