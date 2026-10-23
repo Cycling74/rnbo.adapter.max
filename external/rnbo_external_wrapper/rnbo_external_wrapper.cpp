@@ -56,19 +56,21 @@ using c74::min::flags;
 namespace {
 	const std::regex inportEventInRegex("^in[[:digit:]]+$");
 
-	void LoggerOutputFunction(RNBO::LogLevel level, const char *message)
+	void LogToMax(RNBO::LogLevel level, RNBO::ErrorCode, const char *message, void* context)
 	{
+		c74::max::t_object* owner = static_cast<c74::max::t_object*>(context);
+
 		switch (level) {
 				case RNBO::LogLevel::Debug:
 				case RNBO::LogLevel::Info:
-					c74::max::object_post(nullptr, message);
+					c74::max::object_post(owner, "%s", message);
 					return;
 				case RNBO::LogLevel::Warning:
-					c74::max::object_warn(nullptr, message);
+					c74::max::object_warn(owner, "%s", message);
 					return;
 				case RNBO::LogLevel::Error:
 				default:
-					c74::max::object_error(nullptr, message);
+					c74::max::object_error(owner, "%s", message);
 					return;
 		}
 	}
@@ -590,6 +592,7 @@ class rnbo_external_wrapper :
 					return { };
 				})
 		{
+			mRNBOObj.setLogCallback(LogToMax, maxobj());
 
 			//some behaviors are slightly different in live
 			auto p = c74::max::gensym("#P");
@@ -1108,7 +1111,7 @@ class rnbo_external_wrapper :
 		c74::min::message<> mMaxClassSetup {
 			this, "maxclass_setup",
 			[this](const c74::min::atoms& args, const int _inlet) -> c74::min::atoms {
-				RNBO::Logger::getInstance().setLoggerOutputCallback(LoggerOutputFunction);
+				RNBO::setFallbackLogCallback(LogToMax, nullptr);
 
 				c74::max::t_class * c = args[0];
 
